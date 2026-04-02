@@ -1,0 +1,138 @@
+// ==========================================
+// CONFIGURAÇÕES (PREENCHA COM SEUS DADOS)
+const MEU_CHAT_ID = "0000000000"; // Substitua pelo seu Chat ID do Telegram
+const SPREADSHEET_ID = "00000000000000000000000000000000000000000000"; // Substitua pelo ID da sua Planilha do Google
+const NOME_ABA = "Página1"; // Nome da aba onde os links vão ficar
+// ==========================================
+
+function doGet() {
+  return HtmlService.createHtmlOutputFromFile('Index')
+      .setTitle('Painel Lotes - ML')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function adicionarLinksPlanilha(urls) {
+  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(NOME_ABA);
+  const dados = urls.map(url => [url]); 
+  sheet.getRange(sheet.getLastRow() + 1, 1, dados.length, 1).setValues(dados);
+  return true;
+}
+
+function carregarPendentesPlanilha() {
+  const prop = PropertiesService.getScriptProperties();
+  let linhaAtual = parseInt(prop.getProperty('PONTEIRO_LEITURA')) || 1; 
+  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(NOME_ABA);
+  const ultimaLinha = sheet.getLastRow();
+  
+  if (linhaAtual > ultimaLinha) return []; 
+  
+  const numLinhas = ultimaLinha - linhaAtual + 1;
+  const dados = sheet.getRange(linhaAtual, 1, numLinhas, 1).getValues();
+  return dados.map(row => row[0]).filter(url => url !== ""); 
+}
+
+// ==========================================
+// MÁQUINA DE TEMPO DO GOOGLE
+// ==========================================
+
+// Responde pro site se o robô tá ligado
+function verificarStatusRobo() {
+  const triggers = ScriptApp.getProjectTriggers();
+  let isAtivo = false;
+
+  for(let t of triggers) {
+    if(t.getHandlerFunction() === 'dispararLoteBg') {
+      isAtivo = true;
+      break;
+    }
+  }
+
+  if (isAtivo) {
+    const prop = PropertiesService.getScriptProperties();
+    return {
+      ativo: true,
+      turno: prop.getProperty('TURNO') || 'imediato',
+      tamanho: parseInt(prop.getProperty('TAMANHO_LOTE')) || 1,
+      intervalo: parseInt(prop.getProperty('INTERVALO')) || 10
+    };
+  }
+  return { ativo: false };
+}
+
+function configurarTriggers(turno, tamanho, intervalo, webhook) {
+  const prop = PropertiesService.getScriptProperties();
+  prop.setProperty('WEBHOOK_URL', webhook);
+  prop.setProperty('TAMANHO_LOTE', tamanho.toString());
+  prop.setProperty('INTERVALO', intervalo.toString());
+  prop.setProperty('TURNO', turno); // Salva o turno para o site lembrar depois
+
+  pararTriggers(); 
+
+  if (turno === '1h') {
+    ScriptApp.newTrigger('dispararLoteBg').timeBased().everyHours(1).create();
+  } else if (turno === 'mtn') {
+    ScriptApp.newTrigger('dispararLoteBg').timeBased().atHour(10).everyDays(1).create();
+    ScriptApp.newTrigger('dispararLoteBg').timeBased().atHour(14).everyDays(1).create();
+    ScriptApp.newTrigger('dispararLoteBg').timeBased().atHour(19).everyDays(1).create();
+  } else if (turno === 'imediato') {
+    ScriptApp.newTrigger('dispararLoteBg').timeBased().everyMinutes(1).create();
+  }
+}
+
+function pararTriggers() {
+  const triggers = ScriptApp.getProjectTriggers();
+  for(let t of triggers) {
+    if(t.getHandlerFunction() === 'dispararLoteBg') {
+      ScriptApp.deleteTrigger(t);
+    }
+  }
+}
+
+function dispararLoteBg() {
+  const prop = PropertiesService.getScriptProperties();
+  const webhookUrl = prop.getProperty('WEBHOOK_URL');
+  if (!webhookUrl) return;
+
+  let tamanho = parseInt(prop.getProperty('TAMANHO_LOTE')) || 1;
+  let intervalo = parseInt(prop.getProperty('INTERVALO')) || 10;
+  let linhaAtual = parseInt(prop.getProperty('PONTEIRO_LEITURA')) || 1;
+
+  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(NOME_ABA);
+  const ultimaLinha = sheet.getLastRow();
+
+  if (linhaAtual > ultimaLinha) {
+    pararTriggers(); 
+    return;
+  }
+
+  let linksRestantes = ultimaLinha - linhaAtual + 1;
+  let loteReal = Math.min(tamanho, linksRestantes);
+
+  const urls = sheet.getRange(linhaAtual, 1, loteReal, 1).getValues().map(r => r[0]).filter(u => u !== "");
+
+  if (urls.length > 0) {
+    try {
+      enviarLoteParaN8n(webhookUrl, urls, intervalo);
+      prop.setProperty('PONTEIRO_LEITURA', (linhaAtual + urls.length).toString());
+    } catch (e) {
+      Logger.log("Erro no lote: " + e.message);
+    }
+  } else {
+    prop.setProperty('PONTEIRO_LEITURA', (linhaAtual + loteReal).toString());
+  }
+}
+
+function enviarLoteParaN8n(webhookUrl, urls, intervaloSecs) {
+  let sleepMs = (intervaloSecs || 10) * 1000; 
+  
+  for (let i = 0; i < urls.length; i++) {
+    let payload = { "url": urls[i], "chat_id": MEU_CHAT_ID, "username": "Painel Web" };
+    let options = { "method": "post", "contentType": "application/json", "payload": JSON.stringify(payload), "muteHttpExceptions": true };
+
+    UrlFetchApp.fetch(webhookUrl, options);
+    
+    if (i < urls.length - 1) {
+      Utilities.sleep(sleepMs); 
+    }
+  }
+}

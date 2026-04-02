@@ -1,0 +1,762 @@
+{
+  "name": "Workflow ML",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1888,
+        112
+      ],
+      "id": "a0ed0d03-2a1b-4707-b436-d55d16059d58",
+      "name": "📩 Receber Link - Telegram",
+      "webhookId": "00000000-0000-0000-0000-000000000000",
+      "credentials": {
+        "telegramApi": {
+          "id": "0000000000000000",
+          "name": "Telegram Bot"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "propertyName": "cookies_mercadolivre",
+        "key": "cookies_mercadolivre",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -1664,
+        16
+      ],
+      "id": "d10febeb-c8a1-4d25-9e22-0f8cbed573de",
+      "name": "🍪 Buscar Cookies - Redis",
+      "credentials": {
+        "redis": {
+          "id": "0000000000000000",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "7d0c7caa-dd07-44d8-a83c-f5f07f02192d",
+              "name": "url",
+              "value": "={{ $('📩 Receber Link - Telegram').isExecuted ? $('📩 Receber Link - Telegram').first().json.message.text.trim() : $('🌐 Webhook - Conta Gotas').first().json.body.url }}",
+              "type": "string"
+            },
+            {
+              "id": "bbc6f036-523b-4766-ad8a-8b29c3700915",
+              "name": "cookie",
+              "value": "={{ $json.cookies_mercadolivre || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "chat-id-tg",
+              "name": "chat_id",
+              "value": "={{ $('📩 Receber Link - Telegram').isExecuted ? $('📩 Receber Link - Telegram').first().json.message.chat.id : $('🌐 Webhook - Conta Gotas').first().json.body.chat_id }}",
+              "type": "string"
+            },
+            {
+              "id": "username-tg",
+              "name": "username",
+              "value": "={{ $('📩 Receber Link - Telegram').isExecuted ? ($('📩 Receber Link - Telegram').first().json.message.from.username || $('📩 Receber Link - Telegram').first().json.message.from.first_name) : ($('🌐 Webhook - Conta Gotas').first().json.body.username || 'Sistema') }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1424,
+        16
+      ],
+      "id": "0c8f159b-dda5-4840-9906-a340b082599f",
+      "name": "📋 Preparar Dados"
+    },
+    {
+      "parameters": {
+        "url": "https://www.mercadolivre.com.br/afiliados/linkbuilder",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "cookie",
+              "value": "={{ $json.cookie }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "0c425b0f-5ef5-422b-9301-fb3e67d86c1a",
+      "name": "🌐 Requisição Cookies ML",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -1184,
+        16
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const oldCookieString = $('📋 Preparar Dados').first().json.cookie || \"\";\nconst setCookieArray = $(\"🌐 Requisição Cookies ML\").first().json.headers['set-cookie'] || [];\n\nlet cookieMap = {};\n\nif (oldCookieString) {\n    oldCookieString.split(';').forEach(c => {\n        const [key, ...val] = c.trim().split('=');\n        if (key) cookieMap[key] = val.join('=');\n    });\n}\n\nsetCookieArray.forEach(c => {\n    const cookiePart = c.split(';')[0];\n    const [key, ...val] = cookiePart.trim().split('=');\n    if (key) cookieMap[key] = val.join('=');\n});\n\nconst newCookieString = Object.keys(cookieMap)\n    .map(key => `${key}=${cookieMap[key]}`)\n    .join('; ');\n\nreturn { cookies_atualizados: newCookieString };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -944,
+        16
+      ],
+      "id": "b558add4-8790-424c-b3e0-1d1b463fc68c",
+      "name": "🔀 Mesclar Cookies"
+    },
+    {
+      "parameters": {
+        "operation": "set",
+        "key": "cookies_mercadolivre",
+        "value": "={{ $json.cookies_atualizados }}"
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -704,
+        16
+      ],
+      "id": "cf6fb7a5-7a26-432e-81b3-1989d146fac2",
+      "name": "💾 Salvar Cookies - Redis",
+      "credentials": {
+        "redis": {
+          "id": "0000000000000000",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.mercadolivre.com.br/affiliate-program/api/v2/affiliates/createLink",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "accept",
+              "value": "application/json, text/plain, */*"
+            },
+            {
+              "name": "accept-language",
+              "value": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7"
+            },
+            {
+              "name": "device-memory",
+              "value": "8"
+            },
+            {
+              "name": "downlink",
+              "value": "10"
+            },
+            {
+              "name": "dpr",
+              "value": "1"
+            },
+            {
+              "name": "ect",
+              "value": "4g"
+            },
+            {
+              "name": "origin",
+              "value": "https://www.mercadolivre.com.br"
+            },
+            {
+              "name": "priority",
+              "value": "u=1, i"
+            },
+            {
+              "name": "referer",
+              "value": "https://www.mercadolivre.com.br/afiliados/linkbuilder"
+            },
+            {
+              "name": "rtt",
+              "value": "50"
+            },
+            {
+              "name": "sec-ch-ua",
+              "value": "\"Not:A-Brand\";v=\"99\", \"Google Chrome\";v=\"145\", \"Chromium\";v=\"145\""
+            },
+            {
+              "name": "sec-ch-ua-mobile",
+              "value": "?0"
+            },
+            {
+              "name": "sec-ch-ua-platform",
+              "value": "\"Windows\""
+            },
+            {
+              "name": "sec-fetch-dest",
+              "value": "empty"
+            },
+            {
+              "name": "sec-fetch-mode",
+              "value": "cors"
+            },
+            {
+              "name": "sec-fetch-site",
+              "value": "same-origin"
+            },
+            {
+              "name": "user-agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
+            },
+            {
+              "name": "viewport-width",
+              "value": "1082"
+            },
+            {
+              "name": "x-csrf-token",
+              "value": "00000000-000000000000000000000000000"
+            },
+            {
+              "name": "cookie",
+              "value": "={{ $json.cookies_atualizados }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"urls\": [\n    \"{{ $('📋 Preparar Dados').item.json.url }}\"\n  ],\n  \"tag\": \"SEU_CODIGO_AFILIADO\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -464,
+        16
+      ],
+      "id": "f8a50c03-ca69-413c-b9cb-68c9cbb7e0c7",
+      "name": "🔗 Gerar Link Afiliado - ML"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "bf34c0c4-c2e0-4eac-9457-3145a3f30035",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": 200,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -224,
+        16
+      ],
+      "id": "60dbdaa9-3a74-4479-b8e5-e8a65c717676",
+      "name": "✅ Verificar Resposta ML"
+    },
+    {
+      "parameters": {
+        "jsCode": "const mlResp = $input.first().json;\nconst dataNode = $('📋 Preparar Dados').first().json;\n\nconst linkAfiliado = mlResp?.urls?.[0]?.short_url || mlResp?.[0]?.shortened_url || '';\n\nconst url = dataNode.url || '';\nlet itemId = '';\nconst matchDash = url.match(/MLB[-]?(\\d{7,12})/i);\nif (matchDash) { itemId = 'MLB' + matchDash[1]; }\nif (!itemId) { const pathMatch = url.match(/\\/([A-Z]{3}[0-9]{7,12})(?:[\\-_\\/\\?#]|$)/i); if (pathMatch) itemId = pathMatch[1].toUpperCase(); }\n\nreturn [{ json: { url_original: dataNode.url, link_afiliado: linkAfiliado, item_id: itemId, chat_id: dataNode.chat_id, username: dataNode.username } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "329acbff-78d5-400c-ac62-d03a767e3517",
+      "name": "📦 Extrair Link e Item ID"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url_original }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            },
+            {
+              "name": "Accept",
+              "value": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+            },
+            {
+              "name": "Accept-Language",
+              "value": "pt-BR,pt;q=0.9"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        0
+      ],
+      "id": "8ded6077-0d71-46c7-9f55-bfe7ee4381cd",
+      "name": "🛍️ Buscar Dados do Produto"
+    },
+    {
+      "parameters": {
+        "jsCode": "const html = $input.first().json.data || $input.first().json.body || '';\nconst payload = $('📦 Extrair Link e Item ID').first().json;\n\n// Título\nlet titulo = 'Produto';\nconst titleMatch = html.match(/<meta property=\"og:title\" content=\"([^\"]+)\"/i)\n  || html.match(/<h1[^>]*class=\"[^\"]*ui-pdp-title[^\"]*\"[^>]*>([^<]+)<\\/h1>/i)\n  || html.match(/<title>([^<|]+)/i);\nif (titleMatch) titulo = titleMatch[1].trim();\n\n// Preço via JSON embutido na página\nlet precoAtual = 0;\nlet precoOriginal = 0;\n\nconst jsonPreco = html.match(/\"price\":([\\d.]+).*?\"original_price\":([\\d.]+)/);\nconst jsonPreco2 = html.match(/\"original_price\":([\\d.]+).*?\"price\":([\\d.]+)/);\n\nif (jsonPreco) {\n  precoAtual = parseFloat(jsonPreco[1]);\n  precoOriginal = parseFloat(jsonPreco[2]);\n} else if (jsonPreco2) {\n  precoOriginal = parseFloat(jsonPreco2[1]);\n  precoAtual = parseFloat(jsonPreco2[2]);\n} else {\n  const somentePreco = html.match(/\"price\":([\\d.]+)/);\n  if (somentePreco) precoAtual = parseFloat(somentePreco[1]);\n}\n\n// Monta linha de preço\nlet precoLinha = 'Consulte o preco';\nlet precoAtualStr = '';\nlet precoOriginalStr = '';\n\nif (precoAtual > 0 && precoOriginal > 0 && precoOriginal > precoAtual) {\n  precoAtualStr = precoAtual.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});\n  precoOriginalStr = precoOriginal.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});\n  precoLinha = precoAtualStr;\n} else if (precoAtual > 0) {\n  precoLinha = precoAtual.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});\n}\n\n// Parcelas\nlet parcelasTexto = '';\nconst parcelaMatch = html.match(/em (\\d+)x de[^R]*R\\$\\s*([\\d.,]+)/i);\nif (parcelaMatch) parcelasTexto = ` ou ${parcelaMatch[1]}x de R$${parcelaMatch[2]} sem juros`;\n\n// Loja\nlet loja = 'Loja no ML';\nconst lojaMatch = html.match(/\"officialStoreName\":\"([^\"]+)\"/)\n  || html.match(/class=\"[^\"]*official-store[^\"]*\"[^>]*>([^<]+)</)\n  || html.match(/\"seller\":\\{[^}]*\"nickname\":\"([^\"]+)\"/)\n  || html.match(/\"seller\":\\{[^}]*\"name\":\"([^\"]+)\"/);\nif (lojaMatch) loja = lojaMatch[1].trim();\n\n// Imagem\nlet imagem = '';\nconst imgMatch = html.match(/<meta property=\"og:image\" content=\"([^\"]+)\"/i)\n  || html.match(/\"thumbnail\":\"(https:[^\"]+)\"/);\nif (imgMatch) imagem = imgMatch[1].replace('http://', 'https://');\n\nreturn [{ json: {\n  titulo,\n  preco_formatado: precoLinha,\n  preco_atual: precoAtualStr,\n  preco_original: precoOriginalStr,\n  parcelas_texto: parcelasTexto,\n  loja,\n  imagem_url: imagem,\n  link_afiliado: payload.link_afiliado,\n  chat_id: payload.chat_id,\n  username: payload.username\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ],
+      "id": "ec627164-03cf-446f-99b9-a8b977256d4e",
+      "name": "⚙️ Processar Produto"
+    },
+    {
+      "parameters": {
+        "model": "llama-3.3-70b-versatile",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        976,
+        192
+      ],
+      "id": "7f8e6247-3a47-44e6-b17d-fd42778603c0",
+      "name": "🧠 Groq - Llama 3.3",
+      "credentials": {
+        "groqApi": {
+          "id": "0000000000000000",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const chamadaResp = $input.first().json;\nconst produto = $('⚙️ Processar Produto').first().json;\nconst payload = $('📦 Extrair Link e Item ID').first().json;\n\nlet chamada = '';\ntry {\n  chamada = chamadaResp.text.trim().toUpperCase();\n  chamada = chamada.replace(/^\"|\"$/g, '').trim();\n} catch(e) { chamada = '✨ ACHEI PRA VOCÊ!'; }\n\nconst linkFinal = payload.link_afiliado || produto.link_afiliado;\n\nconst tituloLimpo = produto.titulo\n  .replace(/[-–—]?\\s*\\(+R\\$[\\s\\d.,]+\\)+/gi, '')\n  .replace(/[-–—]?\\s*R\\$[\\s\\d.,]+/gi, '')\n  .replace(/\\s{2,}/g, ' ')\n  .trim();\n\nlet textoPostagem = '';\n\nif (produto.preco_original) {\n  textoPostagem = \n`${chamada}\n\n${tituloLimpo}\n\n━━━━━━━━━━━━━━━\nDe: ~R$ ${produto.preco_original}~\n🔥 *Por apenas R$ ${produto.preco_atual}*${produto.parcelas_texto ? '\\n💳 ' + produto.parcelas_texto.trim() : ''}\n━━━━━━━━━━━━━━━\n\n⚡ Oferta relâmpago — corre antes que acabe!\n\n🛒 ${linkFinal}`;\n} else {\n  textoPostagem = \n`${chamada}\n\n${tituloLimpo}\n\n━━━━━━━━━━━━━━━\n💰 *R$ ${produto.preco_formatado} à vista*${produto.parcelas_texto ? '\\n💳 ' + produto.parcelas_texto.trim() : ''}\n━━━━━━━━━━━━━━━\n\n⚡ Estoque limitado — não perca essa chance!\n\n🛒 ${linkFinal}`;\n}\n\nreturn [{ json: { texto_postagem: textoPostagem, imagem_url: produto.imagem_url, link_afiliado: linkFinal, chat_id: produto.chat_id, username: produto.username } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        0
+      ],
+      "id": "4148710a-1c76-4aaf-b9db-34497e00b5ea",
+      "name": "✍️ Montar Postagem"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://evolution_api:8080/message/sendMedia/Promo%20Afi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "00000000000000000000000000000000"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "number",
+              "value": "000000000000000000@g.us"
+            },
+            {
+              "name": "mediatype",
+              "value": "image"
+            },
+            {
+              "name": "mimetype",
+              "value": "image/jpeg"
+            },
+            {
+              "name": "caption",
+              "value": "={{ $json.texto_postagem }}"
+            },
+            {
+              "name": "media",
+              "value": "={{ $json.imagem_url }}"
+            },
+            {
+              "name": "fileName",
+              "value": "produto.jpg"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1600,
+        0
+      ],
+      "id": "c285aabc-0114-4ffe-b875-97f69d084aea",
+      "name": "📤 Enviar WhatsApp - Evolution"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('✍️ Montar Postagem').item.json.chat_id }}",
+        "text": "✅ Pronto! Postagem gerada e enviada ao grupo do WhatsApp!\n\n🔗 Seu link de afiliado:\n{{ $('Montar Postagem Final').item.json.link_afiliado }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1856,
+        0
+      ],
+      "id": "bd83cf6d-76ef-49a8-92d0-d4f935cc1780",
+      "name": "✅ Confirmar - Telegram",
+      "webhookId": "00000000-0000-0000-0000-000000000000",
+      "credentials": {
+        "telegramApi": {
+          "id": "0000000000000000",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Crie UMA chamada de divulgação curta, criativa e impactante em CAPS LOCK para esse produto: {{ $json.titulo }}. Máximo 7 palavras. Responda APENAS a chamada, sem aspas, sem pontuação no final, sem explicação, sem preços, sem valores monetários.",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        976,
+        0
+      ],
+      "id": "14ed4bfa-61c4-422b-84ff-d20b74821d7b",
+      "name": "🤖 IA - Chamada"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "check-price-id",
+              "leftValue": "={{ $json.preco_formatado }}",
+              "rightValue": "Consulte o preco",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        672,
+        0
+      ],
+      "id": "5b61654e-36bc-4223-beaa-d538eee49290",
+      "name": "🔍 Verificar Preço"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "=Ops, {{ $json.username }}! 🚫\n\nNão consegui encontrar o preço desse produto automaticamente. Ele pode estar sem estoque ou ser de uma página diferente.\n\nPor favor, tente me mandar outro link válido do Mercado Livre!",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        976,
+        400
+      ],
+      "id": "60bd722c-6c6f-43c7-b0a7-53b5091458ad",
+      "name": "❌ Aviso - Sem Preço",
+      "webhookId": "00000000-0000-0000-0000-000000000000",
+      "credentials": {
+        "telegramApi": {
+          "id": "0000000000000000",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "conta-gotas-ml",
+        "options": {}
+      },
+      "id": "32251423-5dac-4147-9a3f-ba07e45240b3",
+      "name": "🌐 Webhook - Conta Gotas",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        -1888,
+        -80
+      ],
+      "webhookId": "00000000-0000-0000-0000-000000000000"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "📩 Receber Link - Telegram": {
+      "main": [
+        [
+          {
+            "node": "🍪 Buscar Cookies - Redis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🍪 Buscar Cookies - Redis": {
+      "main": [
+        [
+          {
+            "node": "📋 Preparar Dados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📋 Preparar Dados": {
+      "main": [
+        [
+          {
+            "node": "🌐 Requisição Cookies ML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🌐 Requisição Cookies ML": {
+      "main": [
+        [
+          {
+            "node": "🔀 Mesclar Cookies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔀 Mesclar Cookies": {
+      "main": [
+        [
+          {
+            "node": "💾 Salvar Cookies - Redis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "💾 Salvar Cookies - Redis": {
+      "main": [
+        [
+          {
+            "node": "🔗 Gerar Link Afiliado - ML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔗 Gerar Link Afiliado - ML": {
+      "main": [
+        [
+          {
+            "node": "✅ Verificar Resposta ML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "✅ Verificar Resposta ML": {
+      "main": [
+        [
+          {
+            "node": "📦 Extrair Link e Item ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📦 Extrair Link e Item ID": {
+      "main": [
+        [
+          {
+            "node": "🛍️ Buscar Dados do Produto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🛍️ Buscar Dados do Produto": {
+      "main": [
+        [
+          {
+            "node": "⚙️ Processar Produto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚙️ Processar Produto": {
+      "main": [
+        [
+          {
+            "node": "🔍 Verificar Preço",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🧠 Groq - Llama 3.3": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "🤖 IA - Chamada",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "✍️ Montar Postagem": {
+      "main": [
+        [
+          {
+            "node": "📤 Enviar WhatsApp - Evolution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📤 Enviar WhatsApp - Evolution": {
+      "main": [
+        [
+          {
+            "node": "✅ Confirmar - Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🤖 IA - Chamada": {
+      "main": [
+        [
+          {
+            "node": "✍️ Montar Postagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔍 Verificar Preço": {
+      "main": [
+        [
+          {
+            "node": "🤖 IA - Chamada",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "❌ Aviso - Sem Preço",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🌐 Webhook - Conta Gotas": {
+      "main": [
+        [
+          {
+            "node": "🍪 Buscar Cookies - Redis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "f9fd02d3-5d65-4b0a-b8d3-c31d8970745d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "id": "j5o0niOThbhiFbTd",
+  "tags": []
+}
